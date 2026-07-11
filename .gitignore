@@ -1,0 +1,42 @@
+# ─── Virtual Environment ─────────────────────────────────────────────────────
+venv/
+env/
+.venv/
+.env/
+
+# ─── Python Cache ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# ─── Django ──────────────────────────────────────────────────────────────────
+*.log
+local_settings.py
+/staticfiles/
+
+# Commit db.sqlite3 so Vercel has the demo user seeded.
+# If you want a fresh DB on every deploy, uncomment the line below:
+# db.sqlite3
+
+# ─── Media / Uploads ─────────────────────────────────────────────────────────
+/media/
+
+# ─── Environment Variables ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ─── System Files ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+nul
+
+# ─── Vercel Build Cache ──────────────────────────────────────────────────────
+.vercel
+
+# ─── Learning Notes (personal — never push) ──────────────────────────────────
+LEARN.md
