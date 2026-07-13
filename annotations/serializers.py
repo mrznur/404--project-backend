@@ -78,13 +78,16 @@ class ImageUploadSerializer(serializers.ModelSerializer):
         validated_data['filename'] = image_file.name
         instance = super().create(validated_data)
 
-        # Get dimensions — works for local files; Cloudinary files can't be opened via .path
+        # Get dimensions — only works for local storage (not Cloudinary)
+        # Cloudinary images don't have a .path attribute
         try:
             from PIL import Image as PILImage
+            # Try local path first
             img = PILImage.open(instance.image.path)
             instance.width, instance.height = img.size
             instance.save()
         except Exception:
-            pass  # skip — dimensions are optional
+            # For Cloudinary or if file not accessible — skip dimensions
+            pass
 
         return instance
