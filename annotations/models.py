@@ -1,45 +1,27 @@
 """
 Models for image annotation feature.
+Images are stored as Base64 in the database — no filesystem needed.
+This makes it work on Vercel without any external storage service.
 """
 from django.db import models
 from django.contrib.auth.models import User
-import os
-
-
-def image_upload_path(instance, filename):
-    return f'images/{instance.user.id}/{filename}'
 
 
 class UploadedImage(models.Model):
-    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='images')
-    image      = models.ImageField(upload_to=image_upload_path)
-    filename   = models.CharField(max_length=255)
+    user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='images')
+    # Store the Base64 encoded image data directly in the DB
+    image_data  = models.TextField(help_text='Base64-encoded image with data URI prefix')
+    filename    = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100, default='image/jpeg')
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    width      = models.IntegerField(null=True, blank=True)
-    height     = models.IntegerField(null=True, blank=True)
+    width       = models.IntegerField(null=True, blank=True)
+    height      = models.IntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ['-uploaded_at']
 
     def __str__(self):
         return f"{self.filename} (User: {self.user.username})"
-
-    def delete(self, *args, **kwargs):
-        """
-        Delete the image file when the model instance is deleted.
-        Works for both local storage and Cloudinary.
-        - Local: removes the file from disk via os.remove
-        - Cloudinary: the storage backend handles deletion automatically
-          when we call image.delete(save=False)
-        """
-        if self.image:
-            try:
-                # This works for both local and Cloudinary storage backends
-                self.image.delete(save=False)
-            except Exception:
-                # If anything fails (e.g. file already gone), continue
-                pass
-        super().delete(*args, **kwargs)
 
 
 class Annotation(models.Model):

@@ -167,3 +167,30 @@ python manage.py runserver 8000
 # - Serve media files via nginx/S3 in production
 # - Update CORS_ALLOWED_ORIGINS with your frontend URL
 ```
+
+---
+
+## Image Storage — Base64 in Database
+
+### Why Base64?
+Vercel's serverless filesystem is ephemeral — files saved to `/tmp` disappear between requests. Instead of using an external service (S3, Cloudinary), we store images directly in the SQLite database as Base64-encoded strings.
+
+### How it works
+1. User uploads an image via `POST /api/annotations/images/upload/`
+2. Backend reads the raw bytes, encodes to Base64, prepends the MIME type
+3. Stores as: `data:image/jpeg;base64,/9j/4AAQ...`
+4. Frontend receives this string as `image_url`
+5. HTML `<img src="data:image/jpeg;base64,...">` renders it directly — no HTTP request needed
+
+### Tradeoffs
+- ✅ Works on Vercel without any external service
+- ✅ Images persist in the database (SQLite)
+- ✅ No CORS issues — data URIs are same-origin
+- ⚠️ Larger database size (~33% bigger than raw file)
+- ⚠️ 10MB file limit enforced in serializer
+
+### Files Changed
+- `annotations/models.py` — replaced `ImageField` with `TextField` for `image_data`
+- `annotations/serializers.py` — `ImageUploadSerializer` reads file bytes, encodes Base64
+- `annotations/views.py` — simplified, no more filesystem operations
+- `annotations/migrations/0001_initial.py` — fresh migration for new model

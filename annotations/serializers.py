@@ -1,13 +1,15 @@
 """
 Serializers for the annotations app.
+Images stored as Base64 in DB — works on Vercel without external storage.
 """
+import base64
 from rest_framework import serializers
 from .models import UploadedImage, Annotation
 
 
 class AnnotationSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Annotation
+        model  = Annotation
         fields = ['id', 'image', 'label', 'points', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -18,7 +20,7 @@ class AnnotationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('A polygon must have at least 3 points.')
         for point in value:
             if not isinstance(point, dict) or 'x' not in point or 'y' not in point:
-                raise serializers.ValidationError('Each point must have x and y properties.')
+                raise serializers.ValidationError('Each point must have x and y.')
             if not isinstance(point['x'], (int, float)) or not isinstance(point['y'], (int, float)):
                 raise serializers.ValidationError('x and y must be numbers.')
         return value
@@ -26,7 +28,7 @@ class AnnotationSerializer(serializers.ModelSerializer):
 
 class UploadedImageSerializer(serializers.ModelSerializer):
     annotations = AnnotationSerializer(many=True, read_only=True)
-    image_url   = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model  = UploadedImage
@@ -34,37 +36,24 @@ class UploadedImageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'filename', 'uploaded_at', 'width', 'height']
 
     def get_image_url(self, obj):
-        """
-        Return the full public URL for the image.
-        - With Cloudinary: obj.image.url returns a full https://res.cloudinary.com/... URL
-        - With local storage: we build the absolute URI using the request context
-        """
-        if not obj.image:
-            return None
+        if not obj.image_data:
+            return ''
 
-        try:
-            url = obj.image.url
-            # Cloudinary URLs are already absolute (start with https://)
-            if url.startswith('http'):
-                return url
-            # Local dev — build absolute URL from request
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(url)
-            return url
-        except Exception:
-            return None
+        if obj.image_data.startswith(('data:', 'http://', 'https://')):
+            return obj.image_data
+
+        request = self.context.get('request')
+        if request is not None:
+            return request.build_absolute_uri(obj.image_data)
+
+        return obj.image_data
 
 
-class ImageUploadSerializer(serializers.ModelSerializer):
-    class Meta:
-        model  = UploadedImage
-        fields = ['id', 'image', 'filename']
-        read_only_fields = ['id', 'filename']
+class ImageUploadSerializer(serializers.Serializer):
+    """Accept a file upload and convert to Base64."""
+    image = serializers.ImageField()
 
     def validate_image(self, value):
-        if not value:
-            raise serializers.ValidationError('No image file provided.')
         valid_ext = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
         ext = '.' + value.name.lower().split('.')[-1]
         if ext not in valid_ext:
@@ -74,20 +63,32 @@ class ImageUploadSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        image_file = validated_data['image']
-        validated_data['filename'] = image_file.name
-        instance = super().create(validated_data)
+        image_file   = validated_data['image']
+        content_type = image_file.content_type or 'image/jpeg'
 
-        # Get dimensions — only works for local storage (not Cloudinary)
-        # Cloudinary images don't have a .path attribute
+        # Read and encode to Base64
+        raw   = image_file.read()
+        b64   = base64.b64encode(raw).decode('utf-8')
+        # Store as a full data URI so <img src="..."> works directly in browser
+        data_uri = f'data:{content_type};base64,{b64}'
+
+        # Try to get image dimensions
+        width, height = None, None
         try:
             from PIL import Image as PILImage
-            # Try local path first
-            img = PILImage.open(instance.image.path)
-            instance.width, instance.height = img.size
-            instance.save()
+            import io
+            img = PILImage.open(io.BytesIO(raw))
+            width, height = img.size
         except Exception:
-            # For Cloudinary or if file not accessible — skip dimensions
             pass
 
+        user = self.context['request'].user
+        instance = UploadedImage.objects.create(
+            user         = user,
+            image_data   = data_uri,
+            filename     = image_file.name,
+            content_type = content_type,
+            width        = width,
+            height       = height,
+        )
         return instance
