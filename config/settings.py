@@ -34,6 +34,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'cloudinary',                    # Cloudinary SDK
+    'cloudinary_storage',            # Django storage backend for Cloudinary
     'accounts',
     'tasks',
     'annotations',
@@ -111,12 +113,26 @@ USE_TZ = True
 # ─── Static & Media Files ────────────────────────────────────────────────────
 STATIC_URL    = '/static/'
 STATIC_ROOT   = BASE_DIR / 'staticfiles'
-# WhiteNoise compresses and caches static files in production
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Media (uploaded images) — served locally in dev, from /tmp on Vercel
-MEDIA_URL  = '/media/'
-MEDIA_ROOT = '/tmp/media' if os.environ.get('VERCEL') else BASE_DIR / 'media'
+# ─── Cloudinary (production image storage) ────────────────────────────────────
+# Set CLOUDINARY_URL in Vercel env vars as:
+#   cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+# If not set (local dev), fall back to local media storage.
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
+
+if CLOUDINARY_URL:
+    import cloudinary
+    cloudinary.config(cloudinary_url=CLOUDINARY_URL)
+
+    # Use Cloudinary for ALL media file storage
+    DEFAULT_FILE_STORAGE  = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    MEDIA_URL = '/media/'   # Cloudinary ignores this but Django needs it set
+    MEDIA_ROOT = '/tmp/media'  # fallback, not used when Cloudinary is active
+else:
+    # Local development — store files on disk
+    MEDIA_URL  = '/media/'
+    MEDIA_ROOT = '/tmp/media' if os.environ.get('VERCEL') else BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
